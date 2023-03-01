@@ -3,12 +3,12 @@ using Dapper;
 using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
+using System.Text;
 
 namespace SQLToClass
 {
     public partial class Form1 : Form
     {
-        string coolsql = "declare @TableName sysname = '{0}' declare @Result varchar(max) = 'public class ' + @TableName + ' {'  select @Result = @Result + ' public ' + ColumnType + NullableSign + ' ' + ColumnName + ' { get; set; } ' from(select replace(col.name, ' ', '_') ColumnName, column_id ColumnId, case typ.name when 'bigint' then 'long' when 'binary' then 'byte[]' when 'bit' then 'bool' when 'char' then 'string' when 'date' then 'DateTime' when 'datetime' then 'DateTime' when 'datetime2' then 'DateTime' when 'datetimeoffset' then 'DateTimeOffset' when 'decimal' then 'decimal' when 'float' then 'double' when 'image' then 'byte[]' when 'int' then 'int' when 'money' then 'decimal' when 'nchar' then 'string' when 'ntext' then 'string' when 'numeric' then 'decimal' when 'nvarchar' then 'string' when 'real' then 'float' when 'smalldatetime' then 'DateTime' when 'smallint' then 'short' when 'smallmoney' then 'decimal' when 'text' then 'string' when 'time' then 'TimeSpan' when 'timestamp' then 'long' when 'tinyint' then 'byte' when 'uniqueidentifier' then 'Guid' when 'varbinary' then 'byte[]' when 'varchar' then 'string' else 'UNKNOWN_' + typ.name end ColumnType, case when col.is_nullable = 1 and typ.name in ('bigint', 'bit', 'date', 'datetime', 'datetime2', 'datetimeoffset', 'decimal', 'float', 'int', 'money', 'numeric', 'real', 'smalldatetime', 'smallint', 'smallmoney', 'time', 'tinyint', 'uniqueidentifier') then '?' else '' end NullableSign from sys.columns col join sys.types typ on col.system_type_id = typ.system_type_id AND col.user_type_id = typ.user_type_id where object_id = object_id(@TableName)) t order by ColumnId  set @Result = @Result + ' }' select @Result as RetVal ";
         public Form1()
         {
             InitializeComponent();
@@ -36,20 +36,32 @@ namespace SQLToClass
             try
             {
                 string schema = "";
-                string table = item;
+                string tableName = item;
 
                 if (item.Contains("."))
                 {
                     schema = item.Split('.')[0];
-                    table = item.Split('.')[1];
+                    tableName = item.Split('.')[1];
                 }
 
                 using (IDbConnection cn = new SqlConnection(textBox2.Text))
                 {
 
-                    var res = cn.Query<string>(coolsql.Replace("{0}", item)).FirstOrDefault();
+                        var columnInfo = cn.Query<ColumnData>($"SELECT column_name as ColumnName, data_type as DataType FROM information_schema.columns WHERE table_name = '{tableName}'", cn);
+                        
 
-                    textBox1.Text = res.Replace($"public class {schema}.{table}", $"public class {table}");
+                        // Generate C# class
+                        StringBuilder sb = new StringBuilder();
+                        sb.AppendLine($"public class {item}");
+                        sb.AppendLine("{");
+                        foreach (var column in columnInfo)
+                        {
+                            sb.AppendLine($"    public {GetCSharpType(column.DataType)} {column.ColumnName} {{ get; set; }}");
+                        }
+                        sb.AppendLine("}");
+
+
+                    textBox1.Text = sb.ToString().Replace($"public class {schema}.{tableName}", $"public class {tableName}");
 
                 }
 
@@ -91,6 +103,65 @@ namespace SQLToClass
             {
                 MessageBox.Show($"Error obtaining list from connection string: {ex.Message}", "Error");
                 return null;
+            }
+        }
+
+        public string GetCSharpType(string sqlType)
+        {
+            switch (sqlType.ToLower())
+            {
+                case "int":
+                    return "int";
+                case "bigint":
+                    return "long";
+                case "smallint":
+                    return "short";
+                case "tinyint":
+                    return "byte";
+                case "bit":
+                    return "bool";
+                case "decimal":
+                    return "decimal";
+                case "numeric":
+                    return "decimal";
+                case "money":
+                    return "decimal";
+                case "smallmoney":
+                    return "decimal";
+                case "float":
+                    return "float";
+                case "real":
+                    return "float";
+                case "date":
+                    return "DateTime";
+                case "datetime":
+                    return "DateTime";
+                case "datetime2":
+                    return "DateTime";
+                case "smalldatetime":
+                    return "DateTime";
+                case "char":
+                    return "string";
+                case "varchar":
+                    return "string";
+                case "text":
+                    return "string";
+                case "nchar":
+                    return "string";
+                case "nvarchar":
+                    return "string";
+                case "ntext":
+                    return "string";
+                case "binary":
+                    return "byte[]";
+                case "varbinary":
+                    return "byte[]";
+                case "image":
+                    return "byte[]";
+                case "uniqueidentifier":
+                    return "Guid";
+                default:
+                    return "object";
             }
         }
 
